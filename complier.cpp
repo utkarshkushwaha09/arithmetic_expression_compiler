@@ -13,8 +13,8 @@
 enum class TokenType {
     NUMBER, IDENTIFIER,
     PLUS, MINUS, MULTIPLY, DIVIDE,
-    LPAREN, RPAREN, END,
-    SIN, LOG
+    LPAREN, RPAREN, COMMA, END,
+    SIN, COS, TAN, LOG, SQRT, POW
 };
 
 struct Token {
@@ -44,9 +44,7 @@ public:
     }
 
     void skipWhitespace() {
-        while (std::isspace(currentChar)) {
-            advance();
-        }
+        while (std::isspace(currentChar)) advance();
     }
 
     double number() {
@@ -81,7 +79,11 @@ public:
             if (std::isalpha(currentChar)) {
                 std::string id = identifier();
                 if (id == "sin") return Token(TokenType::SIN, id);
+                if (id == "cos") return Token(TokenType::COS, id);
+                if (id == "tan") return Token(TokenType::TAN, id);
                 if (id == "log") return Token(TokenType::LOG, id);
+                if (id == "sqrt") return Token(TokenType::SQRT, id);
+                if (id == "pow") return Token(TokenType::POW, id);
                 return Token(TokenType::IDENTIFIER, id);
             }
 
@@ -92,6 +94,7 @@ public:
                 case '/': advance(); return Token(TokenType::DIVIDE);
                 case '(': advance(); return Token(TokenType::LPAREN);
                 case ')': advance(); return Token(TokenType::RPAREN);
+                case ',': advance(); return Token(TokenType::COMMA);
                 default:
                     throw std::runtime_error(std::string("Unknown character: ") + currentChar);
             }
@@ -159,7 +162,7 @@ class NumberNode : public ASTNode {
     double value;
 public:
     NumberNode(double value) : value(value) {}
-    double evaluate(SymbolTable& symbolTable) const override { return value; }
+    double evaluate(SymbolTable&) const override { return value; }
 
     std::string generateTAC(std::vector<TACInstruction>& code) const override {
         std::string temp = newTemp();
@@ -192,49 +195,72 @@ public:
 };
 
 class BinaryOpNode : public ASTNode {
-    std::unique_ptr<ASTNode> left;
-    std::unique_ptr<ASTNode> right;
+    std::unique_ptr<ASTNode> left, right;
     TokenType op;
 public:
     BinaryOpNode(std::unique_ptr<ASTNode> left, TokenType op, std::unique_ptr<ASTNode> right)
         : left(std::move(left)), op(op), right(std::move(right)) {}
 
     double evaluate(SymbolTable& symbolTable) const override {
+        double l = left->evaluate(symbolTable);
+        double r = right->evaluate(symbolTable);
         switch (op) {
-            case TokenType::PLUS: return left->evaluate(symbolTable) + right->evaluate(symbolTable);
-            case TokenType::MINUS: return left->evaluate(symbolTable) - right->evaluate(symbolTable);
-            case TokenType::MULTIPLY: return left->evaluate(symbolTable) * right->evaluate(symbolTable);
-            case TokenType::DIVIDE: return left->evaluate(symbolTable) / right->evaluate(symbolTable);
+            case TokenType::PLUS: return l + r;
+            case TokenType::MINUS: return l - r;
+            case TokenType::MULTIPLY: return l * r;
+            case TokenType::DIVIDE: return l / r;
             default: throw std::runtime_error("Invalid operator");
         }
     }
 
     std::string generateTAC(std::vector<TACInstruction>& code) const override {
-        std::string leftVar = left->generateTAC(code);
-        std::string rightVar = right->generateTAC(code);
+        std::string l = left->generateTAC(code);
+        std::string r = right->generateTAC(code);
         std::string temp = newTemp();
-
-        std::string opStr;
-        switch (op) {
-            case TokenType::PLUS: opStr = "+"; break;
-            case TokenType::MINUS: opStr = "-"; break;
-            case TokenType::MULTIPLY: opStr = "*"; break;
-            case TokenType::DIVIDE: opStr = "/"; break;
-            default: throw std::runtime_error("Unsupported operator");
-        }
-
-        code.push_back({temp, opStr, leftVar, rightVar});
+        std::string opStr = (op == TokenType::PLUS) ? "+" : (op == TokenType::MINUS) ? "-" :
+                            (op == TokenType::MULTIPLY) ? "*" : "/";
+        code.push_back({temp, opStr, l, r});
         return temp;
     }
 
     std::string toString() const override {
-        return "(" + left->toString() + " " +
-               (op == TokenType::PLUS ? "+" :
-                op == TokenType::MINUS ? "-" :
-                op == TokenType::MULTIPLY ? "*" : "/")
-               + " " + right->toString() + ")";
+        std::string opStr = (op == TokenType::PLUS) ? "+" : (op == TokenType::MINUS) ? "-" :
+                            (op == TokenType::MULTIPLY) ? "*" : "/";
+        return "(" + left->toString() + " " + opStr + " " + right->toString() + ")";
     }
 };
+class UnaryOpNode : public ASTNode {
+    TokenType op;
+    std::unique_ptr<ASTNode> operand;
+public:
+    UnaryOpNode(TokenType op, std::unique_ptr<ASTNode> operand)
+        : op(op), operand(std::move(operand)) {}
+
+    double evaluate(SymbolTable& symbolTable) const override {
+        double val = operand->evaluate(symbolTable);
+        if (op == TokenType::PLUS) return +val;
+        if (op == TokenType::MINUS) return -val;
+        throw std::runtime_error("Invalid unary operator");
+    }
+
+    std::string generateTAC(std::vector<TACInstruction>& code) const override {
+        std::string var = operand->generateTAC(code);
+        std::string temp = newTemp();
+        if (op == TokenType::PLUS) {
+            code.push_back({temp, "+", "0", var});
+        } else if (op == TokenType::MINUS) {
+            code.push_back({temp, "-", "0", var});
+        } else {
+            throw std::runtime_error("Invalid unary operator");
+        }
+        return temp;
+    }
+
+    std::string toString() const override {
+        return (op == TokenType::PLUS ? "+" : "-") + operand->toString();
+    }
+};
+
 
 // ---------------------------- PARSER ----------------------------
 
@@ -243,14 +269,22 @@ class Parser {
     Token currentToken;
 
     void eat(TokenType type) {
-        if (currentToken.type == type) {
-            currentToken = lexer.getNextToken();
-        } else {
-            throw std::runtime_error("Unexpected token");
-        }
+        if (currentToken.type == type) currentToken = lexer.getNextToken();
+        else throw std::runtime_error("Unexpected token");
     }
 
     std::unique_ptr<ASTNode> factor() {
+    if (currentToken.type == TokenType::PLUS || currentToken.type == TokenType::MINUS) {
+        TokenType op = currentToken.type;
+        eat(op);
+        return std::make_unique<UnaryOpNode>(op, factor());
+    }
+
+    if (currentToken.type == TokenType::NUMBER) {
+        double val = currentToken.value;
+        eat(TokenType::NUMBER);
+        return std::make_unique<NumberNode>(val);
+    } 
         if (currentToken.type == TokenType::NUMBER) {
             double val = currentToken.value;
             eat(TokenType::NUMBER);
@@ -259,39 +293,66 @@ class Parser {
             std::string name = currentToken.text;
             eat(TokenType::IDENTIFIER);
             return std::make_unique<IdentifierNode>(name);
-        } else if (currentToken.type == TokenType::SIN || currentToken.type == TokenType::LOG) {
+        } else if (currentToken.type == TokenType::SIN || currentToken.type == TokenType::COS ||
+                   currentToken.type == TokenType::TAN || currentToken.type == TokenType::LOG ||
+                   currentToken.type == TokenType::SQRT || currentToken.type == TokenType::POW) {
             TokenType funcType = currentToken.type;
             eat(funcType);
             eat(TokenType::LPAREN);
-            auto arg = expr();
+            auto arg1 = expr();
+            std::unique_ptr<ASTNode> arg2 = nullptr;
+
+            if (funcType == TokenType::POW) {
+                eat(TokenType::COMMA);
+                arg2 = expr();
+            }
+
             eat(TokenType::RPAREN);
 
-            struct FunctionNode : public ASTNode {
+            class FunctionNode : public ASTNode {
                 TokenType funcType;
-                std::unique_ptr<ASTNode> arg;
-                FunctionNode(TokenType funcType, std::unique_ptr<ASTNode> arg)
-                    : funcType(funcType), arg(std::move(arg)) {}
+                std::unique_ptr<ASTNode> arg1, arg2;
+            public:
+                FunctionNode(TokenType funcType, std::unique_ptr<ASTNode> arg1, std::unique_ptr<ASTNode> arg2 = nullptr)
+                    : funcType(funcType), arg1(std::move(arg1)), arg2(std::move(arg2)) {}
 
                 double evaluate(SymbolTable& symbolTable) const override {
-                    double val = arg->evaluate(symbolTable);
-                    if (funcType == TokenType::SIN) return std::sin(val * M_PI / 180.0); // degrees
-                    if (funcType == TokenType::LOG) return std::log(val);
-                    throw std::runtime_error("Unknown function");
+                    double a = arg1->evaluate(symbolTable);
+                    switch (funcType) {
+                        case TokenType::SIN: return std::sin(a * M_PI / 180.0);
+                        case TokenType::COS: return std::cos(a * M_PI / 180.0);
+                        case TokenType::TAN: return std::tan(a * M_PI / 180.0);
+                        case TokenType::LOG: return std::log(a);
+                        case TokenType::SQRT: return std::sqrt(a);
+                        case TokenType::POW: return std::pow(a, arg2->evaluate(symbolTable));
+                        default: throw std::runtime_error("Unknown function");
+                    }
                 }
 
                 std::string generateTAC(std::vector<TACInstruction>& code) const override {
-                    std::string argVar = arg->generateTAC(code);
+                    std::string a1 = arg1->generateTAC(code);
                     std::string temp = newTemp();
-                    code.push_back({temp, "call", (funcType == TokenType::SIN ? "sin" : "log"), argVar});
+                    if (funcType == TokenType::POW) {
+                        std::string a2 = arg2->generateTAC(code);
+                        code.push_back({temp, "call", "pow", a1 + ", " + a2});
+                    } else {
+                        std::string fn = (funcType == TokenType::SIN) ? "sin" : (funcType == TokenType::COS) ? "cos" :
+                                         (funcType == TokenType::TAN) ? "tan" : (funcType == TokenType::LOG) ? "log" : "sqrt";
+                        code.push_back({temp, "call", fn, a1});
+                    }
                     return temp;
                 }
 
                 std::string toString() const override {
-                    return (funcType == TokenType::SIN ? "sin" : "log") + std::string("(") + arg->toString() + ")";
+                    if (funcType == TokenType::POW)
+                        return "pow(" + arg1->toString() + ", " + arg2->toString() + ")";
+                    std::string fn = (funcType == TokenType::SIN) ? "sin" : (funcType == TokenType::COS) ? "cos" :
+                                     (funcType == TokenType::TAN) ? "tan" : (funcType == TokenType::LOG) ? "log" : "sqrt";
+                    return fn + "(" + arg1->toString() + ")";
                 }
             };
 
-            return std::make_unique<FunctionNode>(funcType, std::move(arg));
+            return std::make_unique<FunctionNode>(funcType, std::move(arg1), std::move(arg2));
         } else if (currentToken.type == TokenType::LPAREN) {
             eat(TokenType::LPAREN);
             auto node = expr();
@@ -331,79 +392,51 @@ public:
 
 int main() {
     std::string input;
-    std::cout << "Enter an expression (supports +, -, *, /, sin, log): ";
+    std::cout << "Enter an expression: ";
     std::getline(std::cin, input);
 
     try {
-        // Tokenization phase
         Lexer lexer(input);
         std::cout << "\n--- TOKENIZATION ---\n";
         Token token = lexer.getNextToken();
         while (token.type != TokenType::END) {
             switch (token.type) {
-                case TokenType::NUMBER:
-                    std::cout << "NUMBER: " << token.value << "\n";
-                    break;
-                case TokenType::IDENTIFIER:
-                    std::cout << "IDENTIFIER: " << token.text << "\n";
-                    break;
-                case TokenType::SIN:
-                    std::cout << "FUNC: sin\n";
-                    break;
-                case TokenType::LOG:
-                    std::cout << "FUNC: log\n";
-                    break;
-                case TokenType::PLUS:
-                    std::cout << "PLUS\n";
-                    break;
-                case TokenType::MINUS:
-                    std::cout << "MINUS\n";
-                    break;
-                case TokenType::MULTIPLY:
-                    std::cout << "MULTIPLY\n";
-                    break;
-                case TokenType::DIVIDE:
-                    std::cout << "DIVIDE\n";
-                    break;
-                case TokenType::LPAREN:
-                    std::cout << "LPAREN\n";
-                    break;
-                case TokenType::RPAREN:
-                    std::cout << "RPAREN\n";
-                    break;
-                default:
-                    std::cout << "UNKNOWN TOKEN\n";
-                    break;
+                case TokenType::NUMBER: std::cout << "NUMBER: " << token.value << "\n"; break;
+                case TokenType::IDENTIFIER: std::cout << "IDENTIFIER: " << token.text << "\n"; break;
+                case TokenType::SIN: case TokenType::COS: case TokenType::TAN:
+                case TokenType::LOG: case TokenType::SQRT: case TokenType::POW:
+                    std::cout << "FUNC: " << token.text << "\n"; break;
+                case TokenType::PLUS: std::cout << "PLUS\n"; break;
+                case TokenType::MINUS: std::cout << "MINUS\n"; break;
+                case TokenType::MULTIPLY: std::cout << "MULTIPLY\n"; break;
+                case TokenType::DIVIDE: std::cout << "DIVIDE\n"; break;
+                case TokenType::LPAREN: std::cout << "LPAREN\n"; break;
+                case TokenType::RPAREN: std::cout << "RPAREN\n"; break;
+                case TokenType::COMMA: std::cout << "COMMA\n"; break;
+                default: std::cout << "UNKNOWN\n";
             }
             token = lexer.getNextToken();
         }
 
-        // Parsing phase
         Parser parser(input);
         std::cout << "\n--- PARSING ---\n";
-        std::unique_ptr<ASTNode> root = parser.parse();
+        auto root = parser.parse();
 
-        // Print parse tree
         std::cout << "\n--- PARSE TREE ---\n";
         std::cout << root->toString() << "\n";
 
-        // Symbol table and evaluation
-        SymbolTable symbolTable;
+        SymbolTable symbols;
         std::cout << "\n--- EVALUATION ---\n";
-        double result = root->evaluate(symbolTable);
+        double result = root->evaluate(symbols);
         std::cout << "Result: " << result << "\n";
+        symbols.print();
 
-        // Print symbol table
-        symbolTable.print();
-
-        // TAC generation phase
         std::cout << "\n--- THREE-ADDRESS CODE (TAC) ---\n";
         std::vector<TACInstruction> code;
-        std::string resultVar = root->generateTAC(code);
-        for (const auto& instr : code) {
+        std::string finalResult = root->generateTAC(code);
+        for (const auto& instr : code)
             std::cout << instr.toString() << "\n";
-        }
-        std::cout << "Final result stored in: " << resultVar << "\n";
+        std::cout << "Final result stored in: " << finalResult << "\n";
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";
