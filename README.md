@@ -87,11 +87,11 @@ g++ 2.cpp -o 2 `pkg-config gtkmm-4.0 --cflags --libs`
 
 ## 📂 Project Structure
 
-| File/Folder           | Description                                  |
-|-----------------------|----------------------------------------------|
-| `2.cpp`               | Main application logic and GUI code          |
-| `ast_simplified.dot`  | AST in DOT format (auto-generated)           |
-| `ast_simplified.png`  | AST image generated via Graphviz             |
+| File/Folder           | Description                                      |
+|-----------------------|--------------------------------------------------|
+| `2.cpp`               | Main application logic and GUI code              |
+| `ast_simplified.dot`  | AST in DOT format (auto-generated)               |
+| `ast_simplified.png`  | AST image generated via Graphviz(auto generated) |
 
 ---
 
