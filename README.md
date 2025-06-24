@@ -23,17 +23,17 @@ A modern, GUI-based **arithmetic expression compiler** built in **C++** using **
 ## 🖼️ Screenshots
 
 ### 🔹 Tokenization
-![Tokens](tokens.png)
+![Tokens](asset/tokens.png)
 
 ### 🔹 AST Graph (Graphviz)
-![AST Graph](graph.png)
+![AST Graph](asset/graph.png)
 
 ### 🔹 AST Tree View
-![AST View](ast.png)
+![AST View](asset/ast.png)
 
 ### 🔹 TAC and Output Result
 ![TAC](tac.png)
-![Result](result.png)
+![Result](asset/result.png)
 
 ---
 
@@ -123,9 +123,8 @@ g++ 2.cpp -o 2 `pkg-config gtkmm-4.0 --cflags --libs`
 
 ## 👨‍💻 Authors
 
-> 🧑‍💻 Utkarsh Kushwaha
-> 🧑‍💻 Dev Kumar Prajapati
-> 🧑‍💻 Rohit Pant
-> 🧑‍💻 Rahul Dev Kumar
-> 🎓 B.Tech (CSE) Project
+- 🧑‍💻 Utkarsh Kushwaha
+- 🧑‍💻 Dev Kumar Prajapati
+- 🧑‍💻 Rohit Pant
+- 🧑‍💻 Rahul Dev Kumar
 
