@@ -8,12 +8,12 @@
 #include <memory>
 #include <stdexcept>
 #include <sstream>
-#include <fstream>      // for DOT export
-#include <cstdlib>      // for system()
-#include <algorithm>    // for std::find
-#include <glibmm/fileutils.h> // For Glib::file_test
+#include <fstream>      
+#include <cstdlib>      
+#include <algorithm>    
+#include <glibmm/fileutils.h> 
 
-// A more informative exception class
+// A exception class
 class ParsingError : public std::runtime_error {
 public:
     ParsingError(const std::string& message, size_t pos)
@@ -37,7 +37,7 @@ enum class TokenType {
 struct Token {
     TokenType   type;
     std::string text;
-    double      value;  // only for NUMBER
+    double      value; 
 
     Token() : type(TokenType::END), text(), value(0) {}
     Token(TokenType t, const std::string& txt, double v = 0)
@@ -102,7 +102,7 @@ public:
         switch (ch) {
           case '+': advance(); return Token(TokenType::PLUS, "+");
           case '-': advance(); return Token(TokenType::MINUS, "-");
-          case '*': advance(); return Token(TokenType::MUL, "*"); // <<< MODIFIED: Fixed empty text for MUL
+          case '*': advance(); return Token(TokenType::MUL, "*");
           case '/': advance(); return Token(TokenType::DIV, "/");
           case '^': advance(); return Token(TokenType::POW, "^");
           case '(': advance(); return Token(TokenType::LPAREN, "(");
@@ -133,7 +133,6 @@ public:
     size_t getPosition() const { return pos; }
 };
 
-// ... (TACInstruction and SymbolTable are unchanged) ...
 struct TACInstruction {
     std::string result, op, arg1, arg2;
     std::string toString() const {
@@ -144,7 +143,7 @@ struct TACInstruction {
                 return result+" = call "+arg1+", "+arg2;
         }
         if (op=="=") return result+" = "+arg1;
-        if (arg2.empty()) return result + " = " + op + arg1; // For unary
+        if (arg2.empty()) return result + " = " + op + arg1; 
         return result+" = "+arg1+" "+op+" "+arg2;
     }
 };
@@ -165,7 +164,6 @@ public:
 class ASTNode {
 public:
     virtual ~ASTNode() {}
-    // Modified: Added eval_log parameter
     virtual double evaluate(SymbolTable&, std::vector<std::string>& eval_log) const = 0;
     virtual std::string generateTAC(std::vector<TACInstruction>&) const = 0;
     virtual std::string toString() const = 0;
@@ -179,14 +177,11 @@ class NumberNode : public ASTNode {
 public:
     NumberNode(double v,const std::string& txt="")
       : val(v), lit(txt.empty()?std::to_string(v):txt) {}
-    // Modified: Added eval_log and logging
     double evaluate(SymbolTable&, std::vector<std::string>& eval_log) const override {
         eval_log.push_back("Evaluating NumberNode: " + lit + " -> " + std::to_string(val));
         return val;
     }
-    // <<< MODIFIED: Added getValue() method
     double getValue() const { return val; }
-
     std::string generateTAC(std::vector<TACInstruction>&) const override { return lit; }
     std::string toString() const override { return lit; }
     std::unique_ptr<ASTNode> simplify() override { return std::make_unique<NumberNode>(val,lit); }
@@ -197,7 +192,6 @@ class SequenceNode : public ASTNode {
     std::vector<std::unique_ptr<ASTNode>> exprs;
 public:
     SequenceNode(std::vector<std::unique_ptr<ASTNode>> e) : exprs(std::move(e)) {}
-    // Modified: Added eval_log and logging
     double evaluate(SymbolTable& S, std::vector<std::string>& eval_log) const override {
         double result = 0;
         eval_log.push_back("Starting SequenceNode evaluation.");
@@ -229,10 +223,9 @@ public:
         bool changed = false;
         for (auto& e : exprs) {
             auto simplified_e = e->simplify();
-            if (simplified_e.get() != e.get()) changed = true; // Basic change detection
+            if (simplified_e.get() != e.get()) changed = true; 
             simplified.push_back(std::move(simplified_e));
         }
-        // if (!changed && dynamic_cast<SequenceNode*>(this)) return std::unique_ptr<ASTNode>(this); // this is not safe with unique_ptr
         return std::make_unique<SequenceNode>(std::move(simplified));
     }
     std::vector<const ASTNode*> children() const override {
@@ -246,7 +239,6 @@ class VariableNode : public ASTNode {
     std::string name;
 public:
     VariableNode(const std::string& n): name(n) {}
-    // Modified: Added eval_log and logging
     double evaluate(SymbolTable& S, std::vector<std::string>& eval_log) const override {
         double v = S.get(name);
         eval_log.push_back("Evaluating VariableNode: Looking up variable '" + name + "' -> " + std::to_string(v));
@@ -265,7 +257,6 @@ public:
     UnaryOpNode(const std::string& o,std::unique_ptr<ASTNode> c)
       : op(o), operand(std::move(c)) {}
 
-    // Modified: Added eval_log and logging
     double evaluate(SymbolTable& S, std::vector<std::string>& eval_log) const override {
         eval_log.push_back("Evaluating UnaryOpNode: " + op + operand->toString());
         double v = operand->evaluate(S, eval_log);
@@ -274,9 +265,9 @@ public:
             result = -v;
             eval_log.push_back("  Applying unary minus to " + std::to_string(v) + " -> " + std::to_string(result));
         } else if (op == "!") {
-            result = (v == 0.0) ? 1.0 : 0.0; // Logical NOT
+            result = (v == 0.0) ? 1.0 : 0.0; 
             eval_log.push_back("  Applying logical NOT to " + std::to_string(v) + " -> " + std::to_string(result));
-        } else { // Assumed unary '+'
+        } else {
             result = v; 
             eval_log.push_back("  Applying unary plus (noop) to " + std::to_string(v) + " -> " + std::to_string(result));
         }
@@ -285,10 +276,10 @@ public:
     std::string generateTAC(std::vector<TACInstruction>& code) const override {
         std::string a = operand->generateTAC(code);
         std::string tmp="t"+std::to_string(code.size());
-        if (op == "-") { // Specific TAC for unary minus for clarity, e.g. result = 0 - arg
+        if (op == "-") { 
             code.push_back({tmp,op,"0",a}); 
-        } else { // For '!' and '+' (if it reaches here)
-             code.push_back({tmp,op,a,""}); // result = op arg
+        } else { 
+             code.push_back({tmp,op,a,""});
         }
         return tmp;
     }
@@ -296,17 +287,13 @@ public:
         return op + operand->toString();
     }
 
-    // <<< MODIFIED: simplify() to remove constant folding, keep +X -> X identity
     std::unique_ptr<ASTNode> simplify() override {
         auto simplified_operand = operand->simplify();
 
-        if (op == "+") { // Identity: +X resolves to X
+        if (op == "+") { 
             return simplified_operand;
         }
 
-        // For other unary operators like '-' or '!', if constant folding is disallowed,
-        // an expression like UnaryOpNode("-", NumberNode(5)) remains as is.
-        // It does not simplify to NumberNode(-5) at this stage.
         return std::make_unique<UnaryOpNode>(op, std::move(simplified_operand));
     }
     std::vector<const ASTNode*> children() const override { return { operand.get() }; }
@@ -319,7 +306,6 @@ public:
     BinaryOpNode(const std::string& o, std::unique_ptr<ASTNode> l, std::unique_ptr<ASTNode> r)
       : op(o), left(std::move(l)), right(std::move(r)) {}
 
-    // Modified: Added eval_log and logging
     double evaluate(SymbolTable& S, std::vector<std::string>& eval_log) const override {
         eval_log.push_back("Evaluating BinaryOpNode: " + left->toString() + " " + op + " " + right->toString());
         double L = left->evaluate(S, eval_log);
@@ -354,8 +340,6 @@ public:
         return tmp;
     }
     std::string toString() const override { return "("+left->toString()+" "+op+" "+right->toString()+")"; }
-
-    // <<< MODIFIED: simplify() to remove general constant folding, keep identities and div by const zero error
     std::unique_ptr<ASTNode> simplify() override {
         auto simplified_left = left->simplify();
         auto simplified_right = right->simplify();
@@ -363,36 +347,27 @@ public:
         NumberNode* num_left = dynamic_cast<NumberNode*>(simplified_left.get());
         NumberNode* num_right = dynamic_cast<NumberNode*>(simplified_right.get());
 
-        // Algebraic Identities & Specific Error Checks (No general constant folding)
-
+        // Algebraic Identities & Specific Error Checks
         if (op == "+") {
-            if (num_left && num_left->getValue() == 0.0) return simplified_right; // 0 + X -> X
-            if (num_right && num_right->getValue() == 0.0) return simplified_left; // X + 0 -> X
+            if (num_left && num_left->getValue() == 0.0) return simplified_right; 
+            if (num_right && num_right->getValue() == 0.0) return simplified_left; 
         } else if (op == "-") {
-            if (num_right && num_right->getValue() == 0.0) return simplified_left; // X - 0 -> X
+            if (num_right && num_right->getValue() == 0.0) return simplified_left; 
         } else if (op == "*") {
             // Check for 0 first as it's an absorbing element.
-            if (num_left && num_left->getValue() == 0.0) return std::make_unique<NumberNode>(0.0, "0"); // 0 * X -> 0
-            if (num_right && num_right->getValue() == 0.0) return std::make_unique<NumberNode>(0.0, "0"); // X * 0 -> 0
+            if (num_left && num_left->getValue() == 0.0) return std::make_unique<NumberNode>(0.0, "0");
+            if (num_right && num_right->getValue() == 0.0) return std::make_unique<NumberNode>(0.0, "0"); 
             
             // Check for 1 as it's an identity element.
-            if (num_left && num_left->getValue() == 1.0) return simplified_right; // 1 * X -> X
-            if (num_right && num_right->getValue() == 1.0) return simplified_left; // X * 1 -> X
+            if (num_left && num_left->getValue() == 1.0) return simplified_right; 
+            if (num_right && num_right->getValue() == 1.0) return simplified_left;
         } else if (op == "/") {
-            // CRITICAL: Check for division by a constant zero FIRST.
+            // Check for division  zero.
             if (num_right && num_right->getValue() == 0.0) {
                 throw ParsingError("Division by constant zero: " + simplified_left->toString() + " / " + num_right->toString());
             }
-            // Then check for identity X / 1
-            if (num_right && num_right->getValue() == 1.0) return simplified_left; // X / 1 -> X
-            
-            // Note: 0 / ConstNonZero -> 0 is a form of constant folding and is not applied here.
-            // e.g., NumberNode(0) / NumberNode(2) remains as such.
+            if (num_right && num_right->getValue() == 1.0) return simplified_left; 
         }
-        // Logical/comparison operators will not be constant folded here.
-        // e.g., 5 > 2 remains BinaryOpNode(">", NumberNode(5), NumberNode(2))
-
-        // If no identity or specific error rule applied, reconstruct the node with simplified children.
         return std::make_unique<BinaryOpNode>(op, std::move(simplified_left), std::move(simplified_right));
     }
     std::vector<const ASTNode*> children() const override { return { left.get(), right.get() }; }
@@ -405,7 +380,6 @@ public:
     FunctionNode(const std::string& n, std::vector<std::unique_ptr<ASTNode>> a)
       : name(n), args(std::move(a)) {}
 
-    // Modified: Added eval_log and logging
     double evaluate(SymbolTable& S, std::vector<std::string>& eval_log) const override {
         eval_log.push_back("Evaluating FunctionNode: " + name + "(");
         std::vector<double> vals;
@@ -440,22 +414,18 @@ public:
     }
     std::string generateTAC(std::vector<TACInstruction>& code) const override {
         std::string result_arg1;
-        std::string result_arg2; // Only used for 2-arg functions for simplicity here
+        std::string result_arg2; 
         std::string args_for_call;
 
         if (!args.empty()) {
             args_for_call = args[0]->generateTAC(code);
-            if (args.size() > 1) { // Assuming functions like pow, min, max have 2 args
-                // For simplicity in TAC, let's assume we pass multiple args via multiple TAC instructions
-                // or a convention. Here, we'll just use the first for single, and attempt two for others.
-                // A more robust TAC would handle varying numbers of arguments better.
+            if (args.size() > 1) { 
                 std::string arg2_temp = args[1]->generateTAC(code);
-                args_for_call += ", " + arg2_temp; // Simple string concat for TAC
+                args_for_call += ", " + arg2_temp; 
             }
         }
         
         std::string tmp = "t" + std::to_string(code.size());
-        // Modified TAC for call to just pass the name and a string of arguments
         code.push_back({tmp, "call", name, args_for_call}); 
         return tmp;
     }
@@ -477,9 +447,6 @@ public:
             if (simplified_arg.get() != a.get()) changed = true;
             sargs.push_back(std::move(simplified_arg));
         }
-        // If function arguments are all numbers, some functions could be constant folded.
-        // E.g. sqrt(4) -> 2. But user requested no constant folding.
-        // So, we just simplify arguments and reconstruct.
         return std::make_unique<FunctionNode>(name, std::move(sargs));
     }
     std::vector<const ASTNode*> children() const override {
@@ -494,7 +461,6 @@ class AssignmentNode : public ASTNode {
     std::unique_ptr<ASTNode> expr;
 public:
     AssignmentNode(const std::string& v,std::unique_ptr<ASTNode> e) : var(v), expr(std::move(e)) {}
-    // Modified: Added eval_log and logging
     double evaluate(SymbolTable& S, std::vector<std::string>& eval_log) const override {
         eval_log.push_back("Evaluating AssignmentNode: " + var + " = " + expr->toString());
         double v = expr->evaluate(S, eval_log);
@@ -543,9 +509,8 @@ public:
 };
 
 std::unique_ptr<ASTNode> Parser::factor() {
-    if (cur.type==TokenType::PLUS) { // Unary plus
+    if (cur.type==TokenType::PLUS) { 
         advance(); 
-        // Create a UnaryOpNode for '+' which might be simplified away later
         return std::make_unique<UnaryOpNode>("+", factor()); 
     }
     if (cur.type==TokenType::MINUS) { 
@@ -570,10 +535,9 @@ std::unique_ptr<ASTNode> Parser::factor() {
         std::string name=cur.text; advance();
         expect(TokenType::LPAREN);
         std::vector<std::unique_ptr<ASTNode>> args;
-        if (cur.type != TokenType::RPAREN) { // Handle functions with no arguments if syntax allows
+        if (cur.type != TokenType::RPAREN) { 
             args.push_back(expr());
-            // Allow multiple arguments for functions like pow, min, max etc.
-            // More general multi-arg parsing:
+        
             while(cur.type == TokenType::COMMA) {
                 advance();
                 args.push_back(expr());
@@ -594,7 +558,7 @@ std::unique_ptr<ASTNode> Parser::power() {
     auto node = factor();
     while (cur.type == TokenType::POW) {
         std::string op = cur.text; advance();
-        node = std::make_unique<BinaryOpNode>(op, std::move(node), factor()); // Right associative for power usually factor() or primary_expr()
+        node = std::make_unique<BinaryOpNode>(op, std::move(node), factor());
     }
     return node;
 }
@@ -648,67 +612,52 @@ std::unique_ptr<ASTNode> Parser::logical_or_expr() {
     return node;
 }
 std::unique_ptr<ASTNode> Parser::expr() {
-    // This is the entry point for an expression, which could be an assignment or just a value expression
-    // The grammar seems to be: assignment -> IDENTIFIER = assignment | expr
-    // And expr is logical_or_expr.
-    // To handle "x = y = 5", assignment should be right-associative.
-    // For "a, b=5", parse() handles the sequence.
-
-    // Let's try a structure where assignment is handled at a higher level or differently.
-    // The current Parser::assignment tries to parse an expr first, then checks if it's an assignment.
-    // This is a common way: parse a logical_or_expr, and if it's an IDENTIFIER followed by '=', then it's an assignment.
-    // This needs a bit of lookahead or restructuring of rules if we want direct left-recursive like grammars.
-    // The current approach in assignment() is reasonable for simple cases.
-    return logical_or_expr(); // Keep it simple for now, assignment handles it
+    return logical_or_expr(); 
 }
 
 std::unique_ptr<ASTNode> Parser::assignment() {
-    // Attempt to parse what could be the left-hand side of an assignment (an identifier)
-    // or a full expression if no assignment occurs.
-    auto node = expr(); // Parses a full logical_or_expression
+    auto node = expr();
 
     if (cur.type == TokenType::ASSIGN) {
-        // If the parsed 'node' is actually a variable (target of assignment)
         VariableNode* var_node = dynamic_cast<VariableNode*>(node.get());
         if (var_node) {
-            std::string var_name = var_node->toString(); // Get the variable name
-            advance(); // Consume '='
-            auto rhs = assignment(); // Parse the right-hand side (allows chained assignments like x=y=5)
+            std::string var_name = var_node->toString(); 
+            advance();
+            auto rhs = assignment();
             return std::make_unique<AssignmentNode>(var_name, std::move(rhs));
         } else {
             throw ParsingError("Invalid assignment target. Must be a variable.", lexer.getPosition());
         }
     }
-    return node; // Not an assignment, return the parsed expression
+    return node; 
 }
 
 
 std::unique_ptr<ASTNode> Parser::parse() {
     if (cur.type == TokenType::END) return nullptr;
     std::vector<std::unique_ptr<ASTNode>> expr_list;
-    // Loop to parse comma-separated expressions (statements)
     do {
-        expr_list.push_back(assignment()); // Each "statement" can be an assignment or an expression
+        expr_list.push_back(assignment()); 
         if (cur.type == TokenType::COMMA) {
-            advance(); // Consume comma
-            if (cur.type == TokenType::END) { // Trailing comma check
+            advance(); 
+            if (cur.type == TokenType::END) { 
                 throw ParsingError("Trailing comma at end of expression sequence.", lexer.getPosition());
             }
         } else {
-            break; // No more commas
+            break; 
         }
-    } while (cur.type != TokenType::END); // Continue if not end of input
+    } while (cur.type != TokenType::END); 
 
     if (expr_list.empty()) return nullptr;
-    if (expr_list.size() == 1) return std::move(expr_list[0]); // Single expression/assignment
-    return std::make_unique<SequenceNode>(std::move(expr_list)); // Multiple comma-separated expressions
+    if (expr_list.size() == 1) return std::move(expr_list[0]); 
+    return std::make_unique<SequenceNode>(std::move(expr_list));
 }
 
 
 static int gv_counter = 0;
+// write dote fuction to create Ast graph
 int writeDOT(const ASTNode* n, std::ostream& out) {
     int id = gv_counter++;
-    // Escape quotes in the label for DOT
     std::string label = n->toString();
     std::string escaped_label;
     for (char c : label) {
@@ -732,9 +681,9 @@ void exportASTtoDOT(const ASTNode* root, const std::string& dst) {
         std::cerr << "Error: Could not open DOT file for writing.\n";
         return;
     }
-    gv_counter = 0; // Reset counter for each export
+    gv_counter = 0;
     out << "digraph AST {\n";
-    out << "  node [shape=box];\n"; // You can customize node shape here
+    out << "  node [shape=box];\n";
     if (root) {
         writeDOT(root, out);
     }
@@ -752,8 +701,6 @@ void exportASTtoDOT(const ASTNode* root, const std::string& dst) {
 struct EvalOutputs {
     std::string tokens, simplifiedAST, evalSteps, finalResult, tac;
 };
-
-// <<< MODIFIED: processExpression to use simplified_ast for TAC and evaluate
 EvalOutputs processExpression(const std::string& line, SymbolTable& symbols) {
     EvalOutputs outputs;
     std::ostringstream ss_tokens, ss_eval_steps, ss_tac;
@@ -860,11 +807,9 @@ private:
 public:
     CalculatorWindow() {
         set_title("Expression Compiler GUI");
-        set_default_size(900, 750); // Adjusted default size slightly
+        set_default_size(900, 750); 
         set_child(vbox_);
-        set_name("main-window"); // Crucial for window-specific CSS
-
-        // Setup entry and history popover
+        set_name("main-window");
         entry_.set_placeholder_text("Enter expression, e.g., 'x=5, (x > 2) && (x < 10)'");
         entry_.set_hexpand(true);
         entry_.get_style_context()->add_class("custom-entry");
@@ -875,7 +820,7 @@ public:
         btn_history_.set_margin_top(3); 
         btn_history_.set_margin_bottom(3);
         btn_history_.set_margin_end(2);
-        btn_history_.set_icon_name("view-history-symbolic"); // Using a symbolic icon
+        btn_history_.set_icon_name("view-history-symbolic");
 
         popover_.set_has_arrow(true);
         popover_.set_child(listbox_history_);
@@ -886,32 +831,26 @@ public:
             popover_.popup();
         });
 
-        // Setup buttons
         btn_eval_.set_label("Evaluate");
-        btn_eval_.get_style_context()->add_class("primary-action-button"); // New class for primary button
+        btn_eval_.get_style_context()->add_class("primary-action-button"); 
 
         btn_clear_symbols_.set_label("Clear Symbols");
         btn_clear_symbols_.set_name("clear-symbols-button"); 
         btn_clear_symbols_.set_icon_name("edit-clear-symbolic"); 
-        btn_clear_symbols_.get_style_context()->add_class("secondary-action-button"); // New class for secondary
+        btn_clear_symbols_.get_style_context()->add_class("secondary-action-button"); 
 
-
-        // Top bar
-        hbox_top_.set_spacing(10); // Adjusted spacing
+        hbox_top_.set_spacing(10); 
         hbox_top_.append(entry_);
         hbox_top_.append(btn_history_);
         hbox_top_.append(btn_eval_);
         hbox_top_.append(btn_clear_symbols_);
         vbox_.append(hbox_top_);
 
-
-        // Error label
         error_label_.get_style_context()->add_class("error-label");
         error_label_.set_wrap(true);
         error_label_.set_xalign(0.0);
         vbox_.append(error_label_);
 
-        // Tabs
         notebook_.set_vexpand(true);
         vbox_.append(notebook_);
         add_tab("Tokens", tv_tok_);
@@ -919,13 +858,11 @@ public:
         add_tab("Steps", tv_eval_);
         add_tab("Result", tv_res_);
         add_tab("3-Addr Code", tv_tac_);
-        add_tab("Symbol Table", tv_symtab_); // tv_symtab_ is initialized here
+        add_tab("Symbol Table", tv_symtab_); 
         add_tab_image("AST Graph", tv_graph_);
 
 
-        update_symbol_table_view(); // Call after tv_symtab_ is created
-
-        // Signal handlers
+        update_symbol_table_view(); 
         btn_eval_.signal_clicked().connect(sigc::mem_fun(*this, &CalculatorWindow::on_evaluate));
         entry_.signal_activate().connect(sigc::mem_fun(*this, &CalculatorWindow::on_evaluate));
         btn_clear_symbols_.signal_clicked().connect(sigc::mem_fun(*this, &CalculatorWindow::on_clear_symbols));
@@ -934,12 +871,12 @@ public:
     }
 
 protected:
-    Gtk::Box vbox_{Gtk::Orientation::VERTICAL, 0}; // Main vertical box
+    Gtk::Box vbox_{Gtk::Orientation::VERTICAL, 0}; 
     Gtk::Box hbox_top_{Gtk::Orientation::HORIZONTAL, 0}; 
     Gtk::Entry entry_;
     Gtk::Button btn_eval_;
     Gtk::Button btn_clear_symbols_;
-    Gtk::Button btn_history_; // Removed emoji, will use icon
+    Gtk::Button btn_history_; 
     Gtk::Popover popover_;
     Gtk::ListBox listbox_history_;
     Gtk::Notebook notebook_;
@@ -949,14 +886,12 @@ protected:
     Gtk::TextView* tv_eval_ = nullptr;
     Gtk::TextView* tv_res_ = nullptr;
     Gtk::TextView* tv_tac_ = nullptr;
-    // tv_symtab_ is already declared as a member
     Gtk::Image* tv_graph_ = nullptr;
 
     void add_tab(const Glib::ustring& label, Gtk::TextView*& tv_member_ptr) {
-        // If adding the "Symbol Table" tab, assign to the member tv_symtab_
         if (label == "Symbol Table") {
             tv_symtab_ = Gtk::manage(new Gtk::TextView());
-            tv_member_ptr = tv_symtab_; // ensure the passed reference also points to it
+            tv_member_ptr = tv_symtab_; 
         } else {
              tv_member_ptr = Gtk::manage(new Gtk::TextView());
         }
@@ -973,7 +908,7 @@ protected:
         img = Gtk::manage(new Gtk::Image());
         img->set_vexpand(true); 
         img->set_hexpand(true);
-        img->set_icon_size(Gtk::IconSize::LARGE); // Ensure image can scale if it's an icon
+        img->set_icon_size(Gtk::IconSize::LARGE); 
         auto scrolled_window = Gtk::manage(new Gtk::ScrolledWindow());
         scrolled_window->set_child(*img);
         scrolled_window->set_policy(Gtk::PolicyType::AUTOMATIC, Gtk::PolicyType::AUTOMATIC);
@@ -982,7 +917,7 @@ protected:
 
     void update_symbol_table_view() {
         std::ostringstream os;
-        if (symbols_.data().empty()) { os << "[Symbol table is empty]"; } // More descriptive
+        if (symbols_.data().empty()) { os << "[Symbol table is empty]"; }
         for (const auto& [name, value] : symbols_.data()) {
             os << name << " = " << value << "\n";
         }
@@ -992,7 +927,7 @@ protected:
     void on_clear_symbols() {
         symbols_.clear();
         update_symbol_table_view();
-        entry_.grab_focus(); // Return focus to entry after clearing
+        entry_.grab_focus(); 
     }
 
     void on_evaluate() {
@@ -1001,9 +936,6 @@ protected:
 
         const auto current_expression_text = entry_.get_text(); 
         if (current_expression_text.empty()) {
-            // Optionally, provide feedback if the user tries to evaluate an empty expression
-            // error_label_.set_text("Please enter an expression.");
-            // entry_.get_style_context()->add_class("input-error");
             return;
         }
 
@@ -1020,24 +952,22 @@ protected:
 
             if (tv_graph_) {
                 std::string image_path = "ast_simplified.png";
-                // Check if the file exists and is not empty
                 if (Glib::file_test(image_path, Glib::FileTest::EXISTS) && Glib::file_test(image_path, Glib::FileTest::IS_REGULAR)) {
                      Glib::RefPtr<Gio::File> file = Gio::File::create_for_path(image_path);
                      Glib::RefPtr<Gdk::Pixbuf> pixbuf;
                      Glib::RefPtr<Gdk::Texture> texture;
                      try {
-                        // Try to load as pixbuf first to check validity and size
                         pixbuf = Gdk::Pixbuf::create_from_file(image_path);
                         if (pixbuf && pixbuf->get_width() > 0 && pixbuf->get_height() > 0) {
                              texture = Gdk::Texture::create_from_file(file);
                              tv_graph_->set(texture);
                         } else {
-                             tv_graph_->set_from_icon_name("image-missing-symbolic"); // Use symbolic for missing
-                             tv_graph_->set_pixel_size(64); // Give it a decent size
+                             tv_graph_->set_from_icon_name("image-missing-symbolic"); 
+                             tv_graph_->set_pixel_size(64); 
                         }
                      } catch (const Glib::Error& err) {
                         std::cerr << "Error loading image '" << image_path << "': " << err.what() << std::endl;
-                        tv_graph_->set_from_icon_name("dialog-warning-symbolic"); // Use symbolic for error
+                        tv_graph_->set_from_icon_name("dialog-warning-symbolic"); 
                         tv_graph_->set_pixel_size(64);
                      }   
                 } else {
@@ -1069,13 +999,10 @@ protected:
     }
 
     void update_history(const std::string& new_expr_str) { 
-        // Remove if exists to move to top, then add
         history_.erase(std::remove(history_.begin(), history_.end(), new_expr_str), history_.end());
         history_.insert(history_.begin(), new_expr_str);
 
-        if (history_.size() > 20) history_.pop_back(); // Limit history size
-
-        // Clear existing items (more robust than get_children and remove)
+        if (history_.size() > 20) history_.pop_back(); 
         while (auto* first_child = listbox_history_.get_first_child()) {
             listbox_history_.remove(*first_child);
         }
@@ -1083,39 +1010,30 @@ protected:
         for (const auto& item : history_) {
             auto row = Gtk::make_managed<Gtk::ListBoxRow>();
             auto label = Gtk::make_managed<Gtk::Label>(item);
-            label->set_margin_start(8); // Increased padding
+            label->set_margin_start(8); 
             label->set_margin_end(8);
-            label->set_margin_top(5);   // Increased padding
+            label->set_margin_top(5);
             label->set_margin_bottom(5);
             label->set_xalign(0.0f);
             row->set_child(*label);
-            row->set_activatable(true); // Ensure row is activatable
+            row->set_activatable(true); 
             listbox_history_.append(*row);
         }
-        
-        // Connect signal for row activation if not already connected
-        // This connection logic can be tricky if rows are frequently added/removed.
-        // A single connection in the constructor is usually best.
-        // If listbox_history_.signal_row_activated() is connected, it should work for new rows.
         if (!m_history_signal_connected && !history_.empty()) {
              m_row_activated_connection = listbox_history_.signal_row_activated().connect(
                 [this](Gtk::ListBoxRow* row) {
-                    if (row) { // Check if row is not null
+                    if (row) { 
                         if (auto label = dynamic_cast<Gtk::Label*>(row->get_child())) {
                             entry_.set_text(label->get_text());
                             popover_.popdown();
-                            entry_.grab_focus(); // Focus on entry after selecting from history
+                            entry_.grab_focus(); 
                         }
                     }
             });
             m_history_signal_connected = true;
         } else if (history_.empty() && m_history_signal_connected) {
-            // Optional: Disconnect if history becomes empty and was connected
-            // m_row_activated_connection.disconnect();
-            // m_history_signal_connected = false;
         }
     }
-    // Member to track signal connection for history
     bool m_history_signal_connected = false;
     sigc::connection m_row_activated_connection;
 
@@ -1123,77 +1041,70 @@ protected:
     void apply_styles() {
         auto css_provider = Gtk::CssProvider::create();
         try {
-            // More modern and attractive CSS
             css_provider->load_from_data(R"(
-                /* Overall Window Style */
                 window#main-window {
-                    background-color: #f0f2f5; /* Slightly lighter and cooler background */
-                    font-family: "Inter", "Segoe UI", Cantarell, "Helvetica Neue", sans-serif; /* Modern font stack */
+                    background-color: #f0f2f5; 
+                    font-family: "Inter", "Segoe UI", Cantarell, "Helvetica Neue", sans-serif; 
                     padding: 0px;
                     margin: 0px;
                 }
-
-                /* Top bar container - hbox_top_ */
+                
                 window#main-window > GtkBox > GtkBox:first-child { 
-                     padding: 15px; /* Increased padding for more breathing room */
-                     background-color: #ffffff; /* White background for the top bar */
-                     border-bottom: 1px solid #d0d7de; /* Subtle separator */
-                     margin-bottom: 5px; /* Space before error label or notebook */
+                     padding: 15px; 
+                     background-color: #ffffff; 
+                     border-bottom: 1px solid #d0d7de;
+                     margin-bottom: 5px; 
                 }
 
-                /* Expression Entry Field */
                 .custom-entry {
-                    font-size: 15px; /* Slightly larger font */
+                    font-size: 15px; 
                     padding: 10px 14px;
-                    border: 1px solid #c8d1dc; /* Softer border color */
-                    border-radius: 8px; /* Consistent rounded corners */
+                    border: 1px solid #c8d1dc; 
+                    border-radius: 8px; 
                     background-color: #fdfdfe;
-                    color: #24292f; /* Darker text for better contrast */
-                    box-shadow: inset 0 1px 2px rgba(0,0,0,0.03); /* Softer inset shadow */
+                    color: #24292f; 
+                    box-shadow: inset 0 1px 2px rgba(0,0,0,0.03); 
                     transition: border-color 0.2s ease, box-shadow 0.2s ease;
                 }
                 .custom-entry:focus {
-                    border-color: #0969da; /* GitHub Primer blue for focus */
-                    box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.2); /* Softer focus ring */
+                    border-color: #0969da; 
+                    box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.2); 
                 }
-                .input-error { /* For entry field when there's an error */
-                    border-color: #d73a49; /* GitHub error red */
-                    background-color: #fff6f6; /* Light red background */
+                .input-error { 
+                    border-color: #d73a49; 
+                    background-color: #fff6f6; 
                 }
                 .input-error:focus {
                      box-shadow: 0 0 0 3px rgba(215, 58, 73, 0.2);
                 }
-
-                /* General Button Styling */
                 GtkButton {
-                    font-weight: 500; /* Slightly bolder */
+                    font-weight: 500; 
                     border-radius: 8px; 
-                    padding: 9px 18px; /* Adjusted padding */
+                    padding: 9px 18px; 
                     border: 1px solid #c8d1dc; 
-                    background-color: #f6f8fa; /* Light GitHub-like button background */
+                    background-color: #f6f8fa; 
                     color: #24292f;
                     transition: background-color 0.1s ease-in-out, border-color 0.1s ease-in-out;
-                    margin: 0px 4px; /* Consistent margin */
+                    margin: 0px 4px; 
                 }
                 GtkButton:hover {
-                    background-color: #f0f2f5; /* Slightly darker on hover */
+                    background-color: #f0f2f5; 
                     border-color: #b0b8c3;
                 }
                 GtkButton:active {
                     background-color: #e8ebef;
                     box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
                 }
-                GtkButton:focus { /* Consistent focus ring */
+                GtkButton:focus {
                     outline: none;
                     border-color: #0969da; 
                     box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.2); 
                 }
 
-                /* Primary Action Button (e.g., Evaluate) */
                 .primary-action-button {
-                    background-color: #2da44e; /* GitHub green */
+                    background-color: #2da44e; 
                     color: white;
-                    font-weight: 600; /* Bolder for primary action */
+                    font-weight: 600; 
                     border-color: #2c974b; 
                 }
                 .primary-action-button:hover {
@@ -1208,38 +1119,34 @@ protected:
                     box-shadow: 0 0 0 3px rgba(45, 164, 78, 0.3); 
                 }
 
-                /* Secondary Action Button (e.g., Clear Symbols) */
                 .secondary-action-button {
-                    background-color: #f6f8fa; /* Default light button */
-                    color: #d73a49; /* Destructive action color for text/icon */
-                    border: 1px solid #d73a49; /* Border matching text/icon color */
+                    background-color: #f6f8fa; 
+                    color: #d73a49; 
+                    border: 1px solid #d73a49; 
                 }
                 .secondary-action-button:hover {
-                    background-color: #fdedee; /* Very light red on hover */
+                    background-color: #fdedee;
                     border-color: #cb2431;
                 }
                  .secondary-action-button:active {
                     background-color: #fbdbe0;
                 }
-                .secondary-action-button GtkImage { /* Target icon within the button */
+                .secondary-action-button GtkImage { 
                     color: #d73a49;
                 }
-
-
-                /* History Button (Icon Button) */
                 GtkButton#history-button {
                     background-color: transparent;
                     border: none;
                     box-shadow: none; 
-                    padding: 8px; /* Adequate padding for click target */
+                    padding: 8px; 
                     min-width: 0;
                     min-height: 0;
                 }
-                GtkButton#history-button GtkImage { /* Styling icon color */
-                    color: #57606a; /* Icon color */
+                GtkButton#history-button GtkImage { 
+                    color: #57606a; 
                 }
                 GtkButton#history-button:hover {
-                    background-color: rgba(0, 0, 0, 0.06); /* Subtle hover */
+                    background-color: rgba(0, 0, 0, 0.06); 
                     border-radius: 50%; 
                 }
                 GtkButton#history-button:focus {
@@ -1248,18 +1155,16 @@ protected:
                     border-radius: 50%;
                     box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1); 
                 }
-
-                /* Error Label */
                 .error-label {
-                    color: #a40e26; /* Darker, more accessible red */
+                    color: #a40e26;
                     font-weight: 500;
-                    margin: 10px 15px; /* Adjusted margin */
-                    padding: 12px 15px; /* Increased padding */
-                    background-color: #fde7ea; /* Softer error background */
+                    margin: 10px 15px; 
+                    padding: 12px 15px; 
+                    background-color: #fde7ea; 
                     border: 1px solid #f5c6cb;
-                    border-radius: 6px; /* Consistent radius */
+                    border-radius: 6px; 
                 }
-                .error-label:empty { /* Hide when empty */
+                .error-label:empty { 
                     padding: 0;
                     margin: 0 15px; 
                     border: none;
@@ -1267,25 +1172,24 @@ protected:
                     min-height: 0px; 
                 }
 
-                /* Notebook (Tabs Area) */
                 GtkNotebook {
-                    border: 1px solid #d0d7de; /* Consistent border color */
+                    border: 1px solid #d0d7de; 
                     border-radius: 8px;
                     background-color: #ffffff; 
                     padding: 0px; 
-                    margin: 10px 15px 15px 15px; /* Consistent margins */
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.05); /* Subtle shadow for depth */
+                    margin: 10px 15px 15px 15px; 
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
                 }
                 GtkNotebook > header { 
-                    background-color: #f6f8fa; /* Light header background */
+                    background-color: #f6f8fa; 
                     padding: 5px 5px 0px 5px; 
                     border-bottom: 1px solid #d0d7de; 
-                    border-radius: 8px 8px 0 0; /* Match notebook radius */
+                    border-radius: 8px 8px 0 0; 
                 }
                 GtkNotebook tab {
-                    background-color: transparent; /* Tabs blend with header */
-                    border: none; /* Remove individual tab borders */
-                    border-bottom: 3px solid transparent; /* Indicator for active tab */
+                    background-color: transparent; 
+                    border: none; 
+                    border-bottom: 3px solid transparent; 
                     border-radius: 6px 6px 0 0; 
                     margin-right: 3px;
                     padding: 0; 
@@ -1293,78 +1197,72 @@ protected:
                     transition: border-color 0.2s ease, background-color 0.2s ease;
                 }
                 GtkNotebook tab:checked {
-                    background-color: #ffffff; /* Active tab matches content area bg */
-                    border-bottom: 3px solid #0969da; /* Prominent active tab indicator */
+                    background-color: #ffffff; 
+                    border-bottom: 3px solid #0969da; 
                 }
                 GtkNotebook tab:hover:not(:checked) {
-                    background-color: #e8ebef; /* Hover for inactive tabs */
-                    border-bottom-color: #c8d1dc; /* Subtle indicator on hover */
+                    background-color: #e8ebef; 
+                    border-bottom-color: #c8d1dc; 
                 }
                 GtkNotebook tab GtkLabel { 
                     font-size: 14px;
-                    padding: 10px 20px; /* More padding for tab labels */
-                    color: #57606a; /* Subdued color for inactive tab labels */
+                    padding: 10px 20px; 
+                    color: #57606a; 
                 }
                 GtkNotebook tab:checked GtkLabel {
-                    color: #0969da; /* Active tab label color */
-                    font-weight: 600; /* Emphasize active tab label */
+                    color: #0969da; 
+                    font-weight: 600; 
                 }
-                 /* Content area within notebook tabs */
                 GtkNotebook > GtkScrolledWindow, GtkNotebook > GtkBox {
-                     padding: 12px; /* Generous padding for content */
+                     padding: 12px; 
                      background-color: #ffffff;
-                     border-radius: 0 0 8px 8px; /* Rounded bottom corners */
+                     border-radius: 0 0 8px 8px;
                 }
-
-                /* TextView Styling (for code, logs, etc.) */
+                
                 GtkTextView {
-                    font-family: "SF Mono", "Consolas", "Liberation Mono", monospace; /* Modern mono font stack */
-                    font-size: 13.5px; /* Optimal size for readability */
-                    background-color: #f6f8fa; /* Light background for text areas */
+                    font-family: "SF Mono", "Consolas", "Liberation Mono", monospace; 
+                    font-size: 13.5px; 
+                    background-color: #f6f8fa; 
                     color: #24292f;
                     padding: 12px;
-                    border: 1px solid #d0d7de; /* Subtle border */
+                    border: 1px solid #d0d7de; 
                     border-radius: 6px;
                 }
                 GtkTextView:focus {
                     border-color: #0969da;
                     background-color: #ffffff;
                 }
-
-                /* ScrolledWindow containing TextViews or Images */
                 GtkScrolledWindow {
                     border-radius: 6px; 
                     border: none; 
                 }
-                GtkImage { /* For the AST Graph tab */
-                    background-color: #f6f8fa; /* Match TextView background */
+                GtkImage { 
+                    background-color: #f6f8fa;
                     border-radius: 6px;
                 }
-
-                /* Popover for History */
                 GtkPopover {
                     background-color: #ffffff;
                     border: 1px solid #d0d7de;
                     border-radius: 8px;
-                    box-shadow: 0 8px 24px rgba(140,149,159,0.2); /* Softer, more diffused shadow */
-                    padding: 4px; /* Padding around the listbox */
+                    box-shadow: 0 8px 24px rgba(140,149,159,0.2); 
+                    padding: 4px; 
                 }
                 GtkPopover GtkListBox {
                     background-color: transparent;
                 }
                 GtkPopover GtkListBoxRow {
-                    padding: 0; /* Remove default row padding, use label margin */
-                    border-bottom: 1px solid #eaeef2; /* Lighter separator */
+                    padding: 0; 
+                    border-bottom: 1px solid #eaeef2; 
                     transition: background-color 0.15s ease;
                 }
                 GtkPopover GtkListBoxRow:last-child {
                     border-bottom: none;
                 }
                 GtkPopover GtkListBoxRow:hover {
-                    background-color: #f0f6fc; /* Light blue hover for history items */
+                    background-color: #f0f6fc; 
                 }
                 GtkPopover GtkListBoxRow GtkLabel {
-                    padding: 10px 16px; /* Good padding for history items */
+                    padding: 10px 16px; 
                     font-size: 14px;
                     color: #24292f;
                 }
@@ -1378,6 +1276,6 @@ protected:
 };
 
 int main(int argc, char* argv[]) {
-    auto app = Gtk::Application::create("org.gtkmm.examples.expressioncompiler"); // Changed app ID
+    auto app = Gtk::Application::create("org.gtkmm.examples.expressioncompiler");
     return app->make_window_and_run<CalculatorWindow>(argc, argv);
 }
